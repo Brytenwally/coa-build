@@ -50,7 +50,6 @@ jobs:
       - name: Configure
         env:
           BOOST_ROOT: ${{ steps.boost.outputs.BOOST_ROOT }}
-          Boost_ROOT: ${{ steps.boost.outputs.BOOST_ROOT }}
         run: >
           cmake -S core -B build -G "Visual Studio 17 2022" -A x64
           -DAPPS_BUILD=all -DTOOLS_BUILD=none -DSCRIPTS=static -DMODULES=static
