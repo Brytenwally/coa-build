@@ -1,0 +1,73 @@
+name: Windows build
+
+on:
+  workflow_dispatch:
+    inputs:
+      core_branch:
+        description: azerothcore-wotlk-coa branch
+        default: main
+      ten_man_world_branch:
+        description: mod-10-man-world branch
+        default: master
+      playerbots_branch:
+        description: mod-playerbots branch
+        default: coa-bot-strategies
+      ale_branch:
+        description: mod-ale branch
+        default: master
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 360
+    steps:
+      - name: Get the core and the modules
+        shell: bash
+        run: |
+          git clone --depth 1 -b "${{ inputs.core_branch }}" https://github.com/Brytenwally/azerothcore-wotlk-coa core
+          git clone --depth 1 -b "${{ inputs.ten_man_world_branch }}" https://github.com/Brytenwally/mod-10-man-world core/modules/mod-10-man-world
+          git clone --depth 1 -b "${{ inputs.playerbots_branch }}" https://github.com/Brytenwally/mod-playerbots core/modules/mod-playerbots
+          git clone --depth 1 -b "${{ inputs.ale_branch }}" https://github.com/Brytenwally/mod-ale core/modules/mod-ale
+          for repo in core core/modules/mod-10-man-world core/modules/mod-playerbots core/modules/mod-ale; do
+            echo "$repo $(git -C "$repo" rev-parse --short HEAD) $(git -C "$repo" log -1 --format=%s)" | tee -a versions.txt
+          done
+
+      - name: Apply the 10 Man World core patch
+        shell: bash
+        run: bash core/modules/mod-10-man-world/patches/apply.sh
+
+      - name: Install Boost
+        id: boost
+        uses: MarkusJx/install-boost@v2
+        with:
+          boost_version: 1.84.0
+          platform_version: 2022
+          toolset: msvc
+
+      - name: Install OpenSSL
+        run: choco install openssl --no-progress -y
+
+      - name: Configure
+        env:
+          BOOST_ROOT: ${{ steps.boost.outputs.BOOST_ROOT }}
+          Boost_ROOT: ${{ steps.boost.outputs.BOOST_ROOT }}
+        run: >
+          cmake -S core -B build -G "Visual Studio 17 2022" -A x64
+          -DAPPS_BUILD=all -DTOOLS_BUILD=none -DSCRIPTS=static -DMODULES=static
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Collect the server files
+        shell: bash
+        run: |
+          mkdir -p server
+          cp -r build/bin/Release/. server/
+          cp versions.txt server/
+          ls server
+
+      - name: Upload the server files
+        uses: actions/upload-artifact@v4
+        with:
+          name: coa-server-windows
+          path: server
