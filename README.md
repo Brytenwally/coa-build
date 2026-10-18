@@ -18,3 +18,10 @@ Builds the Windows server (worldserver and authserver) from:
    folder. `versions.txt` says which commit of each repository went into the build.
 
 The databases and the `Data` folder (dbc, maps, vmaps, mmaps) are not part of the build.
+
+## MySQL version
+
+The worldserver refuses to start unless its `libmysql.dll` is the exact MySQL version it was compiled against
+("Used MySQL library version ... does not match", ACE00046). The **mysql_version** field of the Run workflow
+dialog (default `8.4.2`, the version of the portable server) picks that version: the build downloads it, compiles
+against it and puts its `libmysql.dll` in the zip. Use the zip's `libmysql.dll`, not an older one.

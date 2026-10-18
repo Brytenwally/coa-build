@@ -15,6 +15,9 @@ on:
       ale_branch:
         description: mod-ale branch
         default: master
+      mysql_version:
+        description: MySQL version of your server (the build links its libmysql.dll and ships it)
+        default: 8.4.2
 
 jobs:
   windows:
@@ -44,6 +47,32 @@ jobs:
           platform_version: 2022
           toolset: msvc
 
+      - name: Get MySQL ${{ inputs.mysql_version }}
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.mysql_version }}"
+          $series = ($version -split '\.')[0..1] -join '.'
+          $file = "mysql-$version-winx64.zip"
+          $urls = @(
+            "https://cdn.mysql.com/archives/mysql-$series/$file",
+            "https://dev.mysql.com/get/Downloads/MySQL-$series/$file"
+          )
+          $ok = $false
+          foreach ($url in $urls) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing
+              $ok = $true
+              break
+            } catch {
+              Write-Host "Not at $url"
+            }
+          }
+          if (-not $ok) { throw "MySQL $version could not be downloaded" }
+          Expand-Archive $file -DestinationPath mysql
+          $root = (Get-ChildItem mysql -Directory | Select-Object -First 1).FullName
+          "MYSQL_ROOT_DIR=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "MySQL $version in $root"
+
       - name: Install OpenSSL
         run: choco install openssl --no-progress -y
 
@@ -53,6 +82,14 @@ jobs:
         run: >
           cmake -S core -B build -G "Visual Studio 17 2022" -A x64
           -DAPPS_BUILD=all -DTOOLS_BUILD=none -DSCRIPTS=static -DMODULES=static
+          -DMYSQL_ROOT_DIR="$env:MYSQL_ROOT_DIR"
+
+      - name: Check the MySQL used
+        shell: bash
+        run: |
+          grep -E "^MYSQL_(INCLUDE_DIR|LIBRARY)" build/CMakeCache.txt
+          grep -E "^MYSQL_LIBRARY.*mysql-${{ inputs.mysql_version }}-winx64" build/CMakeCache.txt > /dev/null \
+            || { echo "CMake did not pick MySQL ${{ inputs.mysql_version }}"; exit 1; }
 
       - name: Build
         run: cmake --build build --config Release --parallel
@@ -62,6 +99,8 @@ jobs:
         run: |
           mkdir -p server
           cp -r build/bin/Release/. server/
+          cp "$(cygpath -u "$MYSQL_ROOT_DIR")/lib/libmysql.dll" server/
+          echo "mysql ${{ inputs.mysql_version }}" >> versions.txt
           cp versions.txt server/
           ls server
 
